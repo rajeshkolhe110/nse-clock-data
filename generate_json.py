@@ -2,7 +2,7 @@ import requests
 import json
 from datetime import datetime
 
-# Use a requests session to avoid Cloudflare blocks
+# Single session for the primary endpoint
 session = requests.Session()
 session.headers.update({
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
@@ -12,22 +12,43 @@ session.headers.update({
 })
 
 def fetch_nifty_time():
-    # 1) Hit homepage to get cookies
-    session.get("https://www.nseindia.com", timeout=10)
-    # 2) Fetch NIFTY 50 index JSON
-    url = (
-      "https://www.nseindia.com/api/equity-stockIndices"
-      "?index=NIFTY%2050"
-    )
-    resp = session.get(url, timeout=10)
-    resp.raise_for_status()
-    data = resp.json().get("data", [])
-    if not data:
-        raise ValueError("No data in NSE response")
-    return data[0]["timeVal"]  # e.g. "24-Jun-2025 11:26:00"
+    # --- Primary: official API ---
+    try:
+        session.get("https://www.nseindia.com", timeout=10)
+        main_url = (
+            "https://www.nseindia.com/api/equity-stockIndices"
+            "?index=NIFTY%2050"
+        )
+        resp = session.get(main_url, timeout=10)
+        if resp.status_code == 200:
+            data = resp.json().get("data", [])
+            if data and "timeVal" in data[0]:
+                print("✅ Fetched from primary NSE API")
+                return data[0]["timeVal"]
+    except Exception as e:
+        print("⚠️ Primary API failed:", e)
+
+    # --- Fallback: archives.nseindia.com ---
+    try:
+        archive_url = (
+            "https://archives.nseindia.com/live_market/"
+            "dynaContent/live_watch/stock_watch/"
+            "niftyStockWatch.json"
+        )
+        print("🔄 Trying fallback:", archive_url)
+        fallback = requests.get(archive_url, timeout=10)
+        fallback.raise_for_status()
+        arr = fallback.json()
+        if "time" in arr:
+            print("✅ Fetched from archives mirror")
+            return arr["time"]
+        else:
+            raise ValueError("No 'time' field in archive response")
+    except Exception as e:
+        raise RuntimeError(f"Both endpoints failed: {e}")
 
 def main():
-    time_val = fetch_nifty_time()
+    time_val = fetch_nifty_time()  # May raise if both fail
     print("📅 NSE time:", time_val)
 
     now = datetime.now()
