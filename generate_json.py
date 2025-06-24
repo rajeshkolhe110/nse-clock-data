@@ -1,5 +1,6 @@
 import requests
 import json
+import sys
 from datetime import datetime, timedelta
 
 YAHOO_URL = (
@@ -9,42 +10,49 @@ YAHOO_URL = (
 
 def fetch_yahoo_time():
     resp = requests.get(YAHOO_URL, timeout=10)
+    if resp.status_code == 429:
+        # Rate-limited
+        print("⚠️ Yahoo returned 429 Too Many Requests — skipping update.")
+        return None
     resp.raise_for_status()
     data = resp.json()
-    chart = data["chart"]["result"][0]
-    timestamps = chart["timestamp"]
+    timestamps = data["chart"]["result"][0]["timestamp"]
     if not timestamps:
-        raise ValueError("No timestamps in Yahoo data")
-    # Use the last timestamp in UTC
+        raise ValueError("No timestamps in Yahoo response")
+    # Last timestamp is UTC seconds
     ts = timestamps[-1]
     dt_utc = datetime.utcfromtimestamp(ts)
-    # Convert to IST (UTC+5:30)
-    dt_ist = dt_utc + timedelta(hours=5, minutes=30)
-    return dt_ist
+    return dt_utc + timedelta(hours=5, minutes=30)  # IST
 
 def main():
     try:
-        dt = fetch_yahoo_time()
-        time_val = dt.strftime("%d-%b-%Y %H:%M:%S")
+        dt_ist = fetch_yahoo_time()
+        if dt_ist is None:
+            # No update, exit cleanly
+            sys.exit(0)
+
+        time_val = dt_ist.strftime("%d-%b-%Y %H:%M:%S")
         print("📅 Yahoo time (IST):", time_val)
+
+        now = datetime.now()
+        open_t = dt_ist.replace(hour=9, minute=15, second=0, microsecond=0)
+        close_t = dt_ist.replace(hour=15, minute=30, second=0, microsecond=0)
+
+        is_open = (dt_ist.date() == now.date()) and (open_t <= dt_ist <= close_t)
+        result = {
+            "status": "OPEN" if is_open else "CLOSED",
+            "last_updated": time_val
+        }
+
+        with open("market_status.json", "w") as f:
+            json.dump(result, f, indent=2)
+
+        print("✅ market_status.json updated:", result)
+
     except Exception as e:
-        raise RuntimeError(f"Failed to fetch from Yahoo: {e}")
-
-    now = datetime.now()
-    open_t = dt.replace(hour=9, minute=15, second=0, microsecond=0)
-    close_t = dt.replace(hour=15, minute=30, second=0, microsecond=0)
-
-    is_open = (dt.date() == now.date()) and (open_t <= dt <= close_t)
-    result = {
-        "status": "OPEN" if is_open else "CLOSED",
-        "last_updated": time_val
-    }
-
-    with open("market_status.json", "w") as f:
-        json.dump(result, f, indent=2)
-
-    print("✅ market_status.json updated:", result)
-
+        # On any other error, skip update but exit 0
+        print(f"⚠️ Update skipped due to error: {e}")
+        sys.exit(0)
 
 if __name__ == "__main__":
     main()
