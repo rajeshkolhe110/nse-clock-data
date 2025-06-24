@@ -2,7 +2,6 @@ import json
 from datetime import datetime
 import os
 
-# Toggle file to store current status
 STATE_FILE = "market_state.tmp"
 JSON_FILE = "market_status.json"
 
@@ -12,7 +11,7 @@ def get_next_status():
             current = f.read().strip()
         next_status = "CLOSED" if current == "OPEN" else "OPEN"
     else:
-        next_status = "OPEN"  # default on first run
+        next_status = "OPEN"
     with open(STATE_FILE, "w") as f:
         f.write(next_status)
     return next_status
