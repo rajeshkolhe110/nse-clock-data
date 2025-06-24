@@ -1,82 +1,45 @@
 import requests
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
-# ————————————————
-# Step A: Try the official NSE API
-# ————————————————
+YAHOO_URL = (
+    "https://query1.finance.yahoo.com/v8/finance/chart/%5ENSEI"
+    "?range=1d&interval=1m&includePrePost=false"
+)
 
-def fetch_from_primary():
-    session = requests.Session()
-    session.headers.update({
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-        "Accept": "application/json",
-        "Referer": "https://www.nseindia.com/",
-        "Accept-Language": "en-US,en;q=0.9"
-    })
-
-    # 1) hit homepage to get cookies
-    session.get("https://www.nseindia.com", timeout=10)
-    # 2) fetch index JSON
-    url = "https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%2050"
-    resp = session.get(url, timeout=10)
+def fetch_yahoo_time():
+    resp = requests.get(YAHOO_URL, timeout=10)
     resp.raise_for_status()
-    data = resp.json().get("data", [])
-    if not data or "timeVal" not in data[0]:
-        raise ValueError("No timeVal in primary NSE response")
-    print("✅ Fetched from primary NSE API")
-    return data[0]["timeVal"]
-
-
-# ————————————————
-# Step B: Fallback to the “archives” mirror
-# ————————————————
-
-def fetch_from_archive():
-    url = (
-      "https://archives.nseindia.com/live_market/"
-      "dynaContent/live_watch/stock_watch/"
-      "niftyStockWatch.json"
-    )
-    resp = requests.get(url, timeout=10)
-    resp.raise_for_status()
-    arr = resp.json()
-    if "time" not in arr:
-        raise ValueError("No 'time' field in archive response")
-    print("✅ Fetched from archives mirror")
-    return arr["time"]
-
-
-# ————————————————
-# Step C: Orchestrate & write JSON
-# ————————————————
+    data = resp.json()
+    chart = data["chart"]["result"][0]
+    timestamps = chart["timestamp"]
+    if not timestamps:
+        raise ValueError("No timestamps in Yahoo data")
+    # Use the last timestamp in UTC
+    ts = timestamps[-1]
+    dt_utc = datetime.utcfromtimestamp(ts)
+    # Convert to IST (UTC+5:30)
+    dt_ist = dt_utc + timedelta(hours=5, minutes=30)
+    return dt_ist
 
 def main():
-    # Try primary, else archive, else fail
     try:
-        time_val = fetch_from_primary()
-    except Exception as e1:
-        print("⚠️ Primary API failed:", e1)
-        try:
-            time_val = fetch_from_archive()
-        except Exception as e2:
-            raise RuntimeError(f"Both endpoints failed:\n • {e1}\n • {e2}")
+        dt = fetch_yahoo_time()
+        time_val = dt.strftime("%d-%b-%Y %H:%M:%S")
+        print("📅 Yahoo time (IST):", time_val)
+    except Exception as e:
+        raise RuntimeError(f"Failed to fetch from Yahoo: {e}")
 
-    print("📅 NSE time:", time_val)
-
-    # Determine OPEN vs CLOSED
     now = datetime.now()
-    dt = datetime.strptime(time_val, "%d-%b-%Y %H:%M:%S")
-    open_t = datetime.strptime("09:15:00", "%H:%M:%S").time()
-    close_t = datetime.strptime("15:30:00", "%H:%M:%S").time()
+    open_t = dt.replace(hour=9, minute=15, second=0, microsecond=0)
+    close_t = dt.replace(hour=15, minute=30, second=0, microsecond=0)
 
-    is_open = (dt.date() == now.date()) and (open_t <= dt.time() <= close_t)
+    is_open = (dt.date() == now.date()) and (open_t <= dt <= close_t)
     result = {
         "status": "OPEN" if is_open else "CLOSED",
         "last_updated": time_val
     }
 
-    # Write out the JSON file
     with open("market_status.json", "w") as f:
         json.dump(result, f, indent=2)
 
