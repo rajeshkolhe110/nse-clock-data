@@ -1,37 +1,37 @@
-import json
-from datetime import datetime
-import os
+name: Auto Update Market JSON
 
-STATE_FILE = "market_state.tmp"
-JSON_FILE = "market_status.json"
+on:
+  schedule:
+    - cron: '*/5 * * * *'  # Run every 5 minutes
+  workflow_dispatch:       # Allow manual trigger
 
-def get_next_status():
-    if os.path.exists(STATE_FILE):
-        with open(STATE_FILE, "r") as f:
-            current = f.read().strip()
-        next_status = "CLOSED" if current == "OPEN" else "OPEN"
-    else:
-        next_status = "OPEN"
-    with open(STATE_FILE, "w") as f:
-        f.write(next_status)
-    return next_status
+jobs:
+  update-json:
+    runs-on: ubuntu-latest
 
-def main():
-    new_status = get_next_status()
-    now = datetime.now()
-    formatted_time = now.strftime("%d-%b-%Y %H:%M:%S")
-    utc_time = now.utcnow().isoformat() + "Z"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: true
+          fetch-depth: 0
 
-    data = {
-        "status": new_status,
-        "last_updated": formatted_time,
-        "_updated_at": utc_time
-    }
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
 
-    with open(JSON_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+      - name: Install dependencies
+        run: pip install requests
 
-    print(f"✅ Updated {JSON_FILE} → {new_status} at {formatted_time}")
+      - name: Run Python script to generate market_status.json
+        run: python generate_json.py
 
-if __name__ == "__main__":
-    main()
+      - name: Commit and push updated JSON
+        uses: EndBug/add-and-commit@v9
+        with:
+          author_name: github-actions[bot]
+          author_email: actions@github.com
+          message: Auto-toggle market_status.json
+          add: market_status.json
