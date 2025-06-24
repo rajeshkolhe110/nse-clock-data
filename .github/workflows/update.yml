@@ -2,8 +2,8 @@ name: Auto Update Market JSON
 
 on:
   schedule:
-    - cron: '*/5 * * * *'
-  workflow_dispatch:
+    - cron: '*/5 * * * *'    # every 5 minutes
+  workflow_dispatch:        # manual trigger
 
 jobs:
   update-json:
@@ -13,8 +13,9 @@ jobs:
       - name: Check out repo
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0           # ensure full history for commit
-          persist-credentials: true # keep GITHUB_TOKEN
+          token: ${{ secrets.GITHUB_TOKEN }}  # allow pushes
+          persist-credentials: true           # keep the token for git commands
+          fetch-depth: 0                      # full history for commits
 
       - name: Set up Python 3
         uses: actions/setup-python@v4
