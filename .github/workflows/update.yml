@@ -2,8 +2,8 @@ name: Auto Update Market JSON
 
 on:
   schedule:
-    - cron: '*/5 * * * *'    # every 5 minutes
-  workflow_dispatch:        # allow manual trigger
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
 
 jobs:
   update-json:
@@ -12,6 +12,8 @@ jobs:
     steps:
       - name: Check out repo
         uses: actions/checkout@v3
+        with:
+          persist-credentials: true   # <— allow pushes
 
       - name: Set up Python 3
         uses: actions/setup-python@v4
@@ -27,7 +29,7 @@ jobs:
       - name: Commit & Push updated JSON
         run: |
           git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.email "actions@github.com"
           git add market_status.json
-          git commit -m "Auto-update market_status.json" || echo "No changes to commit"
+          git commit -m "Auto-update market_status.json" || echo "No changes"
           git push
